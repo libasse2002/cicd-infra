@@ -12,7 +12,7 @@ data:
   # tunnel smee.io coupé...) — on peut l'allonger pour ménager le quota API.
   POLL_INTERVAL_SECONDS: "300"
   WEBHOOK_PORT: "8000"
-  REGISTRY: "192.168.56.105:30500"
+  REGISTRY: "192.168.56.200:30500"
   IMAGE_NAME: "demo-app"
   TARGET_NAMESPACE: "default"
   TARGET_DEPLOYMENT: "demo-app"
