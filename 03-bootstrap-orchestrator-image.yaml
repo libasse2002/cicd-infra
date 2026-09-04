@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bootstrap-orchestrator-image
+  namespace: cicd-system
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: kaniko
+          image: gcr.io/kaniko-project/executor:v1.23.1
+          args:
+            - "--context=git://github.com/libasse2002/cicd-orchestrator.git#refs/heads/main"
+            - "--dockerfile=Dockerfile"
+            - "--destination=192.168.56.105:30500/cicd-orchestrator:latest"
+            - "--insecure"
+            - "--skip-tls-verify"
+            - "--insecure-pull"

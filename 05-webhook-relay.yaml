@@ -1,0 +1,48 @@
+# Relais smee.io -> orchestrateur (interne au cluster).
+#
+# 1. Ouvrez https://smee.io/new dans un navigateur, cliquez "Start a new
+#    channel". Vous obtenez une URL du type https://smee.io/AbCdEfGhIjK.
+#    Remplacez <SMEE_CHANNEL_URL> ci-dessous par cette URL.
+# 2. Configurez le webhook sur GitHub : dépôt demo-app > Settings > Webhooks
+#    > Add webhook :
+#      - Payload URL : l'URL smee.io obtenue à l'étape 1
+#      - Content type : application/json
+#      - Secret : la MÊME valeur que GITHUB_WEBHOOK_SECRET dans
+#        04-orchestrator-deployment.yaml
+#      - Which events : "Just the push event"
+# 3. kubectl apply -f 05-webhook-relay.yaml (après avoir édité l'URL).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook-relay
+  namespace: cicd-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webhook-relay
+  template:
+    metadata:
+      labels:
+        app: webhook-relay
+    spec:
+      containers:
+        - name: smee-client
+          image: node:20-alpine
+          command:
+            - "npx"
+            - "--yes"
+            - "smee-client"
+            - "--url"
+            - "https://smee.io/75Rjmj4wAlWN5vY8"
+            - "--path"
+            - "/webhook"
+            - "--target"
+            - "http://cicd-orchestrator-webhook.cicd-system.svc.cluster.local:8000/webhook"
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "192Mi"

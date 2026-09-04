@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cicd-orchestrator-config
+  namespace: cicd-system
+data:
+  GITHUB_OWNER: "libasse2002"
+  GITHUB_REPO: "demo-app"
+  GITHUB_BRANCH: "main"
+  # Le webhook est désormais le déclencheur principal (quasi instantané).
+  # POLL_INTERVAL_SECONDS n'est plus qu'un filet de sécurité (webhook perdu,
+  # tunnel smee.io coupé...) — on peut l'allonger pour ménager le quota API.
+  POLL_INTERVAL_SECONDS: "300"
+  WEBHOOK_PORT: "8000"
+  REGISTRY: "192.168.56.105:30500"
+  IMAGE_NAME: "demo-app"
+  TARGET_NAMESPACE: "default"
+  TARGET_DEPLOYMENT: "demo-app"
+  TARGET_CONTAINER: "demo-app"
+  RUN_TESTS: "true"
+  TEST_COMMAND: ""
+  LEASE_DURATION_SECONDS: "15"
+  RENEW_INTERVAL_SECONDS: "5"
+  RETRY_INTERVAL_SECONDS: "3"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cicd-github-token
+  namespace: cicd-system
+type: Opaque
+stringData:
+  GITHUB_TOKEN: ""    # optionnel : PAT GitHub pour descendre sous 60s de polling
+  # OBLIGATOIRE pour le webhook : générez une valeur avec `openssl rand -hex 20`
+  # et collez EXACTEMENT la même valeur dans le champ "Secret" du webhook
+  # GitHub (Settings > Webhooks > Add webhook) sur le dépôt demo-app.
+  GITHUB_WEBHOOK_SECRET: "bfbb6f217a97a8fcd730ef02790e0f4341f098c3"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cicd-orchestrator
+  namespace: cicd-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cicd-orchestrator
+  template:
+    metadata:
+      labels:
+        app: cicd-orchestrator
+    spec:
+      serviceAccountName: cicd-orchestrator
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: cicd-orchestrator
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: orchestrator
+          image: 192.168.56.105:30500/cicd-orchestrator:latest
+          ports:
+            - name: webhook
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: cicd-orchestrator-config
+            - secretRef:
+                name: cicd-github-token
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+# Service interne au cluster exposant l'endpoint /webhook des 3 réplicas.
+# NodePort choisi arbitrairement (30090) — peu importe lequel des 3 pods
+# reçoit la requête : il se contente d'écrire le SHA dans la ConfigMap
+# d'état, seul le leader agit dessus.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cicd-orchestrator-webhook
+  namespace: cicd-system
+spec:
+  type: NodePort
+  selector:
+    app: cicd-orchestrator
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30090
